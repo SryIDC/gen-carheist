@@ -1,8 +1,5 @@
-local onDuty = false
-
 local dropoffloc 
 local dropnpc
-local dropzone
 local vehicles = config.Vehicles
 
 function randomcargen(vehicles, num)
@@ -50,56 +47,31 @@ CreateThread(function ()
             distance = 4.0,
             icon = "fa-solid fa-person",
             onSelect = function ()
-                TriggerServerEvent("gen-carheist:server:cooldown")
-            end
-        },
-        {
-            label = "Quit Job",
-            distance = 4.0,
-            icon = "fa-solid fa-person",
-            onSelect = function ()
-                if onDuty then
-                    Notify("You quit the job!", "inform")
-                    lib.hideTextUI()
-                    onDuty = false
-                    if DoesBlipExist(dropoffloc) then
-                        RemoveBlip(dropoffloc)
-                    end
-                    DeleteEntity(dropnpc)
-                else
-                    Notify("You are not doing any jobs currently!", "error")
-                end
+                TriggerServerEvent("gen-carheist:server:checkcooldown")
             end
         }
     })
 end)
 
 RegisterNetEvent("gen-carheist:client:startcarheist", function ()
-    if not onDuty then
-        TriggerEvent("gen-carheist:client:start")
-        Notify("Job Started", "inform")
-        onDuty = true
-    else
-        Notify("You already have this job!", "error")
-    end
+    TriggerEvent("gen-carheist:client:start")
+    TriggerEvent("gen-carheist:client:starttimer")
+    Notify("Job Started", "inform")
+
 end)
 
 
 RegisterNetEvent('gen-carheist:client:deliversuccess', function(vehicle)
-    Notify("Get down from the vehicle to complete the delivery!", "inform")
     CreateThread(function()
         while true do
             Wait(0)
             local playerPed = PlayerPedId()
             local inVehicle = IsPedInAnyVehicle(playerPed, false)
-            Notify("Get down from the vehicle!", "inform")
             if not inVehicle and DoesEntityExist(vehicle) then
                 DeleteVehicle(vehicle)
                 Notify("Vehicle delivered successfully!", "success")
                 TriggerServerEvent("gen-carheist:server:reward")
-                lib.hideTextUI()
                 TriggerEvent("gen-carheist:client:deletezone")
-                onDuty = false
                 if DoesBlipExist(dropoffloc) then
                     RemoveBlip(dropoffloc)
                 end
@@ -122,6 +94,27 @@ RegisterNetEvent("gen-carheist:client:start", function ()
     for _, vehicle in ipairs(randomVehicles) do
         vehicleListText = "\n"..vehicleListText .. "- " .. vehicle .. "\n"
     end
+
+    local timer = lib.timer(config.boss.robberytime * 1000, function()
+        TriggerEvent("gen-carheist:client:deletezone")
+        Notify("Timer ended! Better luck next time!", "error")
+        lib.hideTextUI()
+
+    end, true)
+
+    CreateThread(function ()
+        while true do
+            Wait(1000)
+            local timeLeft = math.floor(timer:getTimeLeft('s'))
+            
+            if timeLeft > 0 then
+                lib.showTextUI("Time left: "..timeLeft.." seconds", {
+                    position= 'top-center',
+                    icon = "fa-solid fa-clock"
+                })
+            end
+        end
+    end)
 
     lib.showTextUI(vehicleListText)
     
@@ -164,21 +157,21 @@ RegisterNetEvent("gen-carheist:client:start", function ()
                         TriggerEvent('gen-carheist:client:deliversuccess', vehicle)
                     else
                         TriggerServerEvent("gen-carheist:server:sql", plate, vehicle)
-                    end     
+                    end 
                 else
-                    Notify("Wrong vehicle", "error")
+                    Notify("Wrong vehicle!", "error")
+                    Wait(5000)
                 end
-            else
-                Notify("You are not in a vehicle", "error")
             end
-        end,
-        onExit = function (self)
-            print("Left the zone", self.id)
         end
     })
     
     RegisterNetEvent("gen-carheist:client:deletezone", function ()
         deliveryZone:remove()
+        RemoveBlip(dropoffloc)
+        DeleteEntity(dropnpc)
+        lib.hideTextUI()
+        timer:forceEnd(false)
     end)
 
 end)
@@ -195,6 +188,9 @@ function checkList(vehicle, vehicleList)
     end
     return false
 end
+
+
+
 
 
 function Notify(text, type)
