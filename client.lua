@@ -2,11 +2,8 @@ local onDuty = false
 
 local dropoffloc 
 local dropnpc
-local cooldown
 local dropzone
-local randomVehicles
 local vehicles = config.Vehicles
-local randomVehicles = {}
 
 function randomcargen(vehicles, num)
     local selected = {}
@@ -27,22 +24,22 @@ function randomcargen(vehicles, num)
     return selected
 end
 
-Citizen.CreateThread(function ()
-    lib.requestModel(config.boss.model, 100)
-    modelHash = GetHashKey(config.boss.model)
-    npc = CreatePed(0, modelHash, config.boss.coords.x, config.boss.coords.y, config.boss.coords.z-1.0, config.boss.coords.h, false, false)
+CreateThread(function ()
+    lib.requestModel(config.boss.model, 5000)
+    local bossnpchash = GetHashKey(config.boss.model)
+    npc = CreatePed(0, bossnpchash, config.boss.coords.x, config.boss.coords.y, config.boss.coords.z-1.0, config.boss.coords.h, false, false)
     SetEntityInvincible(npc, true)
     FreezeEntityPosition(npc, true)
     SetBlockingOfNonTemporaryEvents(npc, true)
 	TaskStartScenarioInPlace(npc, "WORLD_HUMAN_COP_IDLES", 0, true)
 
-    if config.boss.blip then
+    if config.boss.blip.enable then
         local bossblip = AddBlipForCoord(config.boss.coords.x, config.boss.coords.y, config.boss.coords.z)
-        SetBlipSprite(bossblip, 229) 
-        SetBlipColour(bossblip, 1)
-        SetBlipScale(bossblip, 1.0)
+        SetBlipSprite(bossblip, config.boss.blip.sprite) 
+        SetBlipColour(bossblip, config.boss.blip.color)
+        SetBlipScale(bossblip, config.boss.blip.scale)
         BeginTextCommandSetBlipName("STRING")
-        AddTextComponentString("Illegal Car Theft")
+        AddTextComponentString(config.boss.blip.text)
         EndTextCommandSetBlipName(bossblip)
         SetBlipAsShortRange(bossblip, true)
     end
@@ -62,70 +59,61 @@ Citizen.CreateThread(function ()
             icon = "fa-solid fa-person",
             onSelect = function ()
                 if onDuty then
-                    lib.notify({
-                        title = "Genesis",
-                        description = "You quit the job!",
-                        type = "inform",
-                        icon = "fa-solid fa-person"
-                    })
+                    Notify("You quit the job!", "inform")
                     lib.hideTextUI()
                     onDuty = false
                     if DoesBlipExist(dropoffloc) then
                         RemoveBlip(dropoffloc)
                     end
                     DeleteEntity(dropnpc)
-                    dropzone:remove()
                 else
-                    lib.notify({
-                        title = "Genesis",
-                        description = "You are not doing any jobs currently!",
-                        type = "error",
-                        icon = "fa-solid fa-person"
-                    })
+                    Notify("You are not doing any jobs currently!", "error")
                 end
             end
         }
     })
 end)
 
-RegisterNetEvent("gen-carheist:client:startcarheist")
-AddEventHandler("gen-carheist:client:startcarheist", function ()
+RegisterNetEvent("gen-carheist:client:startcarheist", function ()
     if not onDuty then
         TriggerEvent("gen-carheist:client:start")
-        lib.notify({
-            title = "Genesis",
-            description = "Job Started",
-            type = "inform",
-            icon = "fa-solid fa-person"
-        })
+        Notify("Job Started", "inform")
         onDuty = true
     else
-        lib.notify({
-            title = "Genesis",
-            description = "You already have this job!",
-            type = "error",
-            icon = "fa-solid fa-person"
-        })
+        Notify("You already have this job!", "error")
     end
 end)
 
-function checkList(vehicle, vehicleList)
-    print("vehicleList:", vehicleList)  -- Debug print
-    if type(vehicleList) ~= "table" then
-        print("vehicleList is not a table or is nil")
-        return false
-    end
 
-    for _, name in ipairs(vehicleList) do
-        if name == vehicle then
-            return true
+RegisterNetEvent('gen-carheist:client:deliversuccess', function(vehicle)
+    Notify("Get down from the vehicle to complete the delivery!", "inform")
+    CreateThread(function()
+        while true do
+            Wait(0)
+            local playerPed = PlayerPedId()
+            local inVehicle = IsPedInAnyVehicle(playerPed, false)
+            Notify("Get down from the vehicle!", "inform")
+            if not inVehicle and DoesEntityExist(vehicle) then
+                DeleteVehicle(vehicle)
+                Notify("Vehicle delivered successfully!", "success")
+                TriggerServerEvent("gen-carheist:server:reward")
+                lib.hideTextUI()
+                TriggerEvent("gen-carheist:client:deletezone")
+                onDuty = false
+                if DoesBlipExist(dropoffloc) then
+                    RemoveBlip(dropoffloc)
+                end
+                if DoesEntityExist(dropnpc) then
+                    DeleteEntity(dropnpc)
+                end
+                break 
+            end
         end
-    end
-    return false
-end
+    end)
+end)
 
-RegisterNetEvent("gen-carheist:client:start")
-AddEventHandler("gen-carheist:client:start", function ()
+
+RegisterNetEvent("gen-carheist:client:start", function ()
     local randomVehicles = randomcargen(vehicles, 5)
     local dropran = math.random(1, #config.dropCoords)
     local dropLoc = config.dropCoords[dropran]
@@ -136,6 +124,7 @@ AddEventHandler("gen-carheist:client:start", function ()
     end
 
     lib.showTextUI(vehicleListText)
+    
     
     local dropoffloc = AddBlipForCoord(dropLoc.x, dropLoc.y, dropLoc.z)
     SetBlipSprite(dropoffloc, 1) 
@@ -149,69 +138,74 @@ AddEventHandler("gen-carheist:client:start", function ()
     SetBlipRoute(dropoffloc, true)
     SetBlipRouteColour(dropoffloc, 5)
     lib.requestModel(config.boss.model, 100)
-    modelHash = GetHashKey(config.boss.model)
+    local dropnpcHash = GetHashKey(config.boss.model)
 
-    dropnpc = CreatePed(0, modelHash, dropLoc.x, dropLoc.y, dropLoc.z-1.0, dropLoc.h, false, false)
+    dropnpc = CreatePed(0, dropnpcHash, dropLoc.x, dropLoc.y, dropLoc.z-1.0, dropLoc.h, false, false)
     SetEntityInvincible(dropnpc, true)
     FreezeEntityPosition(dropnpc, true)
     SetBlockingOfNonTemporaryEvents(dropnpc, true)
 
     local playerPed = PlayerPedId()
 
-    local dropzone = lib.points.new({
-        coords = vector3(dropLoc.x, dropLoc.y, dropLoc.z-1.0),
-        distance = 8,
-    })
-    print(dropzone)
-
-    function dropzone:onEnter()
-        print(vehicle)
-        local vehicle = GetVehiclePedIsIn(playerPed, false)
-        local vehicleClass = GetVehicleClass(vehicle)
-        local reward = config.Rewards[vehicleClass]
-        local vehiclehash = GetEntityModel(vehicle)
-        local modelname = GetDisplayNameFromVehicleModel(vehiclehash)
-        local inVehicle = IsPedInAnyVehicle(playerPed, false)
-        if inVehicle then
-            if checkList(modelname, randomVehicles) then
-                lib.notify({
-                    title = "Genesis",
-                    description = "Press [E] to deliver the vehicle",
-                    duration = 5000,
-                    type = "inform",
-                    icon = "fa-solid fa-person"
-                })
-                while true do
-                    Wait(0)
-                    if IsControlJustReleased(0, 38) then
-                        DeleteVehicle(vehicle)
-                        TriggerServerEvent("gen-carheist:server:reward", reward)
-                        lib.hideTextUI()
-                        onDuty = false
-                        if DoesBlipExist(dropoffloc) then
-                            RemoveBlip(dropoffloc)
-                        end
-                        DeleteEntity(dropnpc)
-                        dropzone:remove()
-                        break
-                    end
+    local deliveryZone = lib.zones.box({
+        coords = vec3(dropLoc.x, dropLoc.y, dropLoc.z),
+        size = vec3(10, 10, 5),
+        rotation = dropLoc.h,
+        debug = true,
+        inside = function (self)
+            local vehicle = GetVehiclePedIsIn(playerPed, false)
+            local vehiclehash = GetEntityModel(vehicle)
+            local plate = GetVehicleNumberPlateText(vehicle)
+            local modelname = GetDisplayNameFromVehicleModel(vehiclehash)
+            local inVehicle = IsPedInAnyVehicle(playerPed, false)
+            if inVehicle then
+                if checkList(modelname, randomVehicles) then
+                    if config.boss.owned_cars then
+                        TriggerEvent('gen-carheist:client:deliversuccess', vehicle)
+                    else
+                        TriggerServerEvent("gen-carheist:server:sql", plate, vehicle)
+                    end     
+                else
+                    Notify("Wrong vehicle", "error")
                 end
-            elseif not checkList(modelname, randomVehicles) then
-                lib.notify({
-                    title = "Genesis",
-                    description = "Wrong vehicle",
-                    type = "error",
-                    icon = "fa-solid fa-person"
-                })
+            else
+                Notify("You are not in a vehicle", "error")
             end
-        elseif not inVehicle then
-            lib.notify({
-                title = "Genesis",
-                description = "You are not in a vehicle",
-                type = "error",
-                icon = "fa-solid fa-person"
-            })
+        end,
+        onExit = function (self)
+            print("Left the zone", self.id)
         end
-    end
+    })
+    
+    RegisterNetEvent("gen-carheist:client:deletezone", function ()
+        deliveryZone:remove()
+    end)
 
 end)
+
+function checkList(vehicle, vehicleList)
+    if type(vehicleList) ~= "table" then
+        return false
+    end
+
+    for _, name in ipairs(vehicleList) do
+        if name == vehicle then
+            return true
+        end
+    end
+    return false
+end
+
+
+function Notify(text, type)
+    if config.NotificationType == "ox_lib" then
+        lib.notify({
+            title = "Genesis",
+            description = text,
+            type = type,
+            duration = 5000,
+        })
+    elseif config.NotificationType == "qbx_core" then
+        exports.qbx_core:Notify(text, type, 5000, "Genesis", 'center-right')
+    end
+end 
